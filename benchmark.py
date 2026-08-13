@@ -134,7 +134,9 @@ def benchmark_pipeline(capture, motion_detector, yolo_detector, duration=30):
         if motion:
             motions += 1
             # Frame fresco para YOLO
-            fresh = capture.read_frame() or frame
+            fresh = capture.read_frame()
+            if fresh is None:
+                fresh = frame
             dets = yolo_detector.detect(fresh)
             yolo_runs += 1
             if dets:

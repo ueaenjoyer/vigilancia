@@ -91,7 +91,9 @@ def main():
             cv2.imwrite(path, frame)
 
             # Ejecutar YOLO
-            fresh = capture.read_frame() or frame
+            fresh = capture.read_frame()
+            if fresh is None:
+                fresh = frame
             t0 = time.perf_counter()
             detections = yolo_detector.detect(fresh)
             yolo_time = time.perf_counter() - t0
