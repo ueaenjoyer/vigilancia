@@ -1,10 +1,12 @@
-"""Detección de movimiento por diferencia de frames.
+"""Detección de movimiento por diferencia contra fondo de referencia.
 
-Algoritmo ligero optimizado para Raspberry Pi Zero 2 W.
-No requiere IA ni conexión a Internet.
+Compara cada frame contra un fondo de referencia que se actualiza
+lentamente. Esto permite detectar objetos nuevos (carros, personas)
+incluso si se mueven despacio, porque contrastan contra el fondo estático.
 """
 
 import logging
+import time
 from typing import Optional
 
 import cv2
@@ -14,55 +16,77 @@ logger = logging.getLogger(__name__)
 
 
 class MotionDetector:
-    """Detecta movimiento comparando frames consecutivos.
+    """Detecta movimiento comparando contra un fondo de referencia.
 
-    Usa diferencia absoluta entre frames en escala de grises,
-    con suavizado gaussiano y umbralización para reducir ruido.
+    Usa un modelo de fondo que se actualiza lentamente (learning rate bajo).
+    Cualquier objeto nuevo que aparezca contrasta contra el fondo y se detecta.
 
     Args:
-        threshold: Umbral de binarización (0-255). Default: 25.
-        min_area: Área mínima en píxeles para considerar movimiento. Default: 500.
+        threshold: Umbral de binarización (0-255). Default: 20.
+        min_area: Área mínima en píxeles para considerar movimiento. Default: 300.
+        learning_rate: Velocidad de actualización del fondo (0.0-1.0).
+            Más bajo = fondo cambia más lento = detecta objetos que se quedan.
+            Default: 0.005.
     """
 
-    def __init__(self, threshold: int = 25, min_area: int = 500) -> None:
+    def __init__(
+        self,
+        threshold: int = 25,
+        min_area: int = 500,
+        learning_rate: float = 0.005,
+    ) -> None:
         self.threshold = threshold
         self.min_area = min_area
-        self._prev_gray: Optional[np.ndarray] = None
+        self._learning_rate = learning_rate
+        self._bg_gray: Optional[np.ndarray] = None
+        self._frame_count = 0
+        self._warmup_frames = 5  # Frames para establecer el fondo inicial
         logger.info(
-            "MotionDetector inicializado (threshold=%d, min_area=%d)",
+            "MotionDetector inicializado (threshold=%d, min_area=%d, lr=%.4f)",
             threshold,
             min_area,
+            learning_rate,
         )
 
     def detect(self, frame: np.ndarray) -> bool:
         """Analiza un frame y determina si hay movimiento.
+
+        Compara contra el fondo de referencia en vez del frame anterior.
+        Esto permite detectar objetos nuevos aunque estén quietos.
 
         Args:
             frame: Imagen BGR (numpy array) del frame actual.
 
         Returns:
             True si se detecta movimiento, False en caso contrario.
-            El primer frame siempre retorna False (no hay referencia).
         """
-        # Convertir a escala de grises
+        # Convertir a escala de grises y suavizar (kernel pequeño)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.GaussianBlur(gray, (7, 7), 0)
 
-        # Aplicar suavizado para reducir ruido
-        gray = cv2.GaussianBlur(gray, (21, 21), 0)
+        self._frame_count += 1
 
-        # Primer frame: guardar referencia y retornar False
-        if self._prev_gray is None:
-            self._prev_gray = gray
-            logger.debug("Primer frame almacenado como referencia.")
+        # Primeros frames: construir el fondo de referencia
+        if self._bg_gray is None:
+            self._bg_gray = gray.astype(np.float32)
+            logger.debug("Fondo de referencia inicializado.")
             return False
 
-        # Diferencia absoluta entre frame actual y anterior
-        delta = cv2.absdiff(self._prev_gray, gray)
+        if self._frame_count <= self._warmup_frames:
+            # Acumular promedio para el fondo inicial
+            cv2.accumulateWeighted(gray, self._bg_gray, 0.5)
+            return False
+
+        # Convertir fondo a uint8 para comparar
+        bg_uint8 = self._bg_gray.astype(np.uint8)
+
+        # Diferencia absoluta contra el fondo
+        delta = cv2.absdiff(gray, bg_uint8)
 
         # Umbralización binaria
         _, thresh = cv2.threshold(delta, self.threshold, 255, cv2.THRESH_BINARY)
 
-        # Dilatar para rellenar huecos
+        # Dilatar para conectar regiones cercanas
         thresh = cv2.dilate(thresh, None, iterations=2)
 
         # Encontrar contornos
@@ -70,18 +94,29 @@ class MotionDetector:
             thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
 
-        # Actualizar frame anterior
-        self._prev_gray = gray
-
         # Verificar si algún contorno supera el área mínima
+        motion_detected = False
+        max_area = 0
         for contour in contours:
-            if cv2.contourArea(contour) >= self.min_area:
-                logger.debug("Movimiento detectado (area=%.0f).", cv2.contourArea(contour))
-                return True
+            area = cv2.contourArea(contour)
+            if area >= self.min_area:
+                motion_detected = True
+                if area > max_area:
+                    max_area = area
 
-        return False
+        if motion_detected:
+            logger.debug("Movimiento detectado (area_max=%.0f).", max_area)
+            # Cuando hay movimiento, NO actualizar el fondo rápido
+            # (no queremos que el objeto se "integre" al fondo)
+            cv2.accumulateWeighted(gray, self._bg_gray, self._learning_rate * 0.1)
+        else:
+            # Sin movimiento: actualizar fondo normalmente
+            cv2.accumulateWeighted(gray, self._bg_gray, self._learning_rate)
+
+        return motion_detected
 
     def reset(self) -> None:
-        """Reinicia el detector descartando el frame de referencia."""
-        self._prev_gray = None
+        """Reinicia el detector descartando el fondo de referencia."""
+        self._bg_gray = None
+        self._frame_count = 0
         logger.debug("MotionDetector reiniciado.")
