@@ -18,5 +18,6 @@ Uso típico:
 
 from .motion import MotionDetector
 from .yolo_detector import YOLODetector
+from .visdrone_detector import VisDroneDetector
 
-__all__ = ["MotionDetector", "YOLODetector"]
+__all__ = ["MotionDetector", "YOLODetector", "VisDroneDetector"]

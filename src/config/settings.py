@@ -31,6 +31,8 @@ class Settings:
             int(c.strip())
             for c in os.environ.get("YOLO_TARGET_CLASSES", "0,16").split(",")
         ]
+        # Modelo YOLO: "coco" (YOLOv8n genérico) o "visdrone" (YOLOv11s vigilancia)
+        self.YOLO_MODEL: str = os.environ.get("YOLO_MODEL", "coco")
         self.CAPTURE_INTERVAL: float = float(
             os.environ.get("CAPTURE_INTERVAL", "1.0")
         )
@@ -38,6 +40,16 @@ class Settings:
             os.environ.get("ALERT_COOLDOWN", "30")
         )
         self.LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
+
+        # ROI (Region of Interest) para crop de la zona de detección
+        # Formato: x1,y1,x2,y2 como porcentaje (0.0-1.0) de la imagen
+        # Default: tercio superior donde está la carretera
+        roi_str = os.environ.get("DETECTION_ROI", "")
+        if roi_str:
+            parts = [float(x.strip()) for x in roi_str.split(",")]
+            self.DETECTION_ROI = tuple(parts)  # (x1, y1, x2, y2)
+        else:
+            self.DETECTION_ROI = None  # Sin crop, usa imagen completa
 
     def validate(self) -> None:
         """Verifica que las variables requeridas estén definidas.
