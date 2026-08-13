@@ -83,10 +83,13 @@ class YOLODetector:
 
         import onnxruntime as ort
 
-        # Usar solo CPU, con optimizaciones
+        # Optimizaciones para Celeron N3050 (2 cores)
         sess_options = ort.SessionOptions()
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        sess_options.intra_op_num_threads = 2  # Celeron tiene 2 cores
+        sess_options.intra_op_num_threads = 2   # Paralelismo dentro de cada operación
+        sess_options.inter_op_num_threads = 2   # Paralelismo entre operaciones
+        sess_options.enable_cpu_mem_arena = True  # Pool de memoria (menos allocations)
+        sess_options.enable_mem_pattern = True    # Reutilizar buffers
 
         self._session = ort.InferenceSession(
             str(self._model_path),

@@ -5,6 +5,7 @@ Comandos soportados:
     /foto       - Captura una imagen en vivo de la cámara y la envía.
     /test       - Fuerza detección YOLO y muestra resultados con scores.
     /estado     - Muestra el estado del sistema.
+    /conteo     - Muestra conteo de vehículos del día.
     /pausa      - Pausa las alertas automáticas.
     /reanudar   - Reanuda las alertas automáticas.
     /sensibilidad [alta|media|baja] - Cambia el umbral de movimiento.
@@ -34,12 +35,13 @@ class TelegramCommands:
         motion_detector: Instancia de MotionDetector para /sensibilidad.
     """
 
-    def __init__(self, bot_token: str, chat_id: str, capture, yolo_detector=None, motion_detector=None):
+    def __init__(self, bot_token: str, chat_id: str, capture, yolo_detector=None, motion_detector=None, vehicle_counter=None):
         self.bot_token = bot_token
         self.chat_id = str(chat_id)
         self.capture = capture
         self.yolo_detector = yolo_detector
         self.motion_detector = motion_detector
+        self.vehicle_counter = vehicle_counter
         self._base_url = f"https://api.telegram.org/bot{self.bot_token}"
         self._offset = 0
         self._running = False
@@ -119,6 +121,8 @@ class TelegramCommands:
             self._cmd_test(chat_id)
         elif cmd == "/estado":
             self._cmd_estado(chat_id)
+        elif cmd == "/conteo":
+            self._cmd_conteo(chat_id)
         elif cmd == "/pausa":
             self._cmd_pausa(chat_id)
         elif cmd == "/reanudar":
@@ -132,6 +136,7 @@ class TelegramCommands:
                 "/foto - Captura en vivo\n"
                 "/test - Forzar detección YOLO\n"
                 "/estado - Estado del sistema\n"
+                "/conteo - Conteo de vehículos hoy\n"
                 "/pausa - Pausar alertas\n"
                 "/reanudar - Reanudar alertas\n"
                 "/sensibilidad [alta|media|baja] - Cambiar sensibilidad",
@@ -287,6 +292,17 @@ class TelegramCommands:
         self.motion_detector.threshold = nuevo_umbral
         logger.info("Sensibilidad cambiada a '%s' (umbral=%d).", nivel, nuevo_umbral)
         self._send_text(chat_id, f"✅ Sensibilidad: {nivel} (umbral={nuevo_umbral})")
+
+    def _cmd_conteo(self, chat_id: str):
+        """Muestra el conteo de vehículos del día."""
+        logger.info("Comando /conteo recibido.")
+
+        if self.vehicle_counter is None:
+            self._send_text(chat_id, "⚠️ Contador de vehículos no disponible.")
+            return
+
+        summary = self.vehicle_counter.get_today_summary()
+        self._send_text(chat_id, summary)
 
     # ------------------------------------------------------------------
     # Helpers

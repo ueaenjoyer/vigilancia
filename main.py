@@ -9,6 +9,7 @@ from src.config import Settings
 from src.capture import RTSPCapture
 from src.detection import MotionDetector, YOLODetector
 from src.alerts import TelegramAlert, TelegramCommands
+from src.tracking import VehicleCounter
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ def main():
         chat_id=settings.TELEGRAM_CHAT_ID,
         cooldown=settings.ALERT_COOLDOWN,
     )
+    vehicle_counter = VehicleCounter(cooldown=10.0)
 
     # Registrar señales de apagado
     signal.signal(signal.SIGTERM, shutdown_handler)
@@ -67,6 +69,7 @@ def main():
         capture=capture,
         yolo_detector=yolo_detector,
         motion_detector=motion_detector,
+        vehicle_counter=vehicle_counter,
     )
     commands.start()
 
@@ -100,6 +103,12 @@ def main():
                 if detections:
                     classes = [d.class_name for d in detections]
                     logger.info("YOLO detectó: %s", ", ".join(classes))
+
+                    # Contar vehículos
+                    new_vehicles = vehicle_counter.count(detections)
+                    if new_vehicles:
+                        logger.info("Vehículos nuevos contados: %s", new_vehicles)
+
                     if not commands.alertas_pausadas:
                         telegram.send_alert(fresh_frame, detections)
                     else:
