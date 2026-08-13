@@ -8,7 +8,7 @@ import time
 from src.config import Settings
 from src.capture import RTSPCapture
 from src.detection import MotionDetector, YOLODetector
-from src.alerts import TelegramAlert
+from src.alerts import TelegramAlert, TelegramCommands
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,14 @@ def main():
     # Registrar señales de apagado
     signal.signal(signal.SIGTERM, shutdown_handler)
     signal.signal(signal.SIGINT, shutdown_handler)
+
+    # Iniciar listener de comandos del bot
+    commands = TelegramCommands(
+        bot_token=settings.TELEGRAM_BOT_TOKEN,
+        chat_id=settings.TELEGRAM_CHAT_ID,
+        capture=capture,
+    )
+    commands.start()
 
     # Mensaje de inicio
     telegram.send_text("✅ Sistema de vigilancia iniciado")
