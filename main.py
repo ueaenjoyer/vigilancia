@@ -65,6 +65,8 @@ def main():
         bot_token=settings.TELEGRAM_BOT_TOKEN,
         chat_id=settings.TELEGRAM_CHAT_ID,
         capture=capture,
+        yolo_detector=yolo_detector,
+        motion_detector=motion_detector,
     )
     commands.start()
 
@@ -92,7 +94,10 @@ def main():
                 if detections:
                     classes = [d.class_name for d in detections]
                     logger.info("YOLO detectó: %s", ", ".join(classes))
-                    telegram.send_alert(frame, detections)
+                    if not commands.alertas_pausadas:
+                        telegram.send_alert(frame, detections)
+                    else:
+                        logger.info("Alerta suprimida (pausadas).")
 
             time.sleep(settings.CAPTURE_INTERVAL)
 
