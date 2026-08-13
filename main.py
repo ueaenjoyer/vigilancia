@@ -89,15 +89,27 @@ def main():
 
             if motion:
                 logger.info("Movimiento detectado, ejecutando YOLO...")
-                detections = yolo_detector.detect(frame)
+
+                # Capturar frame fresco para YOLO (el original puede tener delay)
+                fresh_frame = capture.read_frame()
+                if fresh_frame is None:
+                    fresh_frame = frame
+
+                detections = yolo_detector.detect(fresh_frame)
 
                 if detections:
                     classes = [d.class_name for d in detections]
                     logger.info("YOLO detectó: %s", ", ".join(classes))
                     if not commands.alertas_pausadas:
-                        telegram.send_alert(frame, detections)
+                        telegram.send_alert(fresh_frame, detections)
                     else:
                         logger.info("Alerta suprimida (pausadas).")
+
+                # Después de YOLO, actualizar referencia de movimiento
+                # para no perder detecciones por frame viejo
+                post_frame = capture.read_frame()
+                if post_frame is not None:
+                    motion_detector.detect(post_frame)
 
             time.sleep(settings.CAPTURE_INTERVAL)
 
